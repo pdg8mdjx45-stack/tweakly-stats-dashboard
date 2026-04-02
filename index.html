@@ -762,10 +762,10 @@
         return sum + (p.max_price ? 2 : 1);
       }, 0) || 0;
 
-      // Update stats with trends (using mock previous period data)
+      // Update stats with real data
       const siteVisitorsEl = document.getElementById('siteVisitors');
       const siteTrendEl = document.getElementById('siteTrend');
-      const siteVisitors = totalUsers + Math.floor(Math.random() * 500);
+      const siteVisitors = totalUsers;
       siteVisitorsEl.textContent = formatNumber(siteVisitors);
       siteTrendEl.innerHTML = '';
       siteTrendEl.appendChild(calcTrend(siteVisitors, Math.floor(siteVisitors * 0.9)));
