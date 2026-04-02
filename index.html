@@ -687,9 +687,13 @@
   }
 
   function calcTrend(current, previous) {
-    if (!previous || previous === 0) return null;
-    const diff = ((current - previous) / previous) * 100;
     const el = document.createElement('span');
+    if (!previous || previous === 0) {
+      el.className = 'stat-trend';
+      el.textContent = '--';
+      return el;
+    }
+    const diff = ((current - previous) / previous) * 100;
     el.className = `stat-trend ${diff >= 0 ? 'up' : 'down'}`;
     el.textContent = `${diff >= 0 ? '+' : ''}${diff.toFixed(0)}%`;
     return el;
