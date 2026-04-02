@@ -1030,8 +1030,17 @@
   document.getElementById('refreshBtn').addEventListener('click', loadData);
 
   // ─── Init ───────────────────────────────────────────────────────────
-  initCharts();
-  loadData();
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('Dashboard initializing...');
+    try {
+      initCharts();
+      console.log('Charts initialized');
+      loadData();
+      console.log('Data loaded');
+    } catch (e) {
+      console.error('Init error:', e);
+    }
+  });
 </script>
 
 </body>
