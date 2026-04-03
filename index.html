@@ -403,9 +403,9 @@
     <svg viewBox="0 0 24 24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
     Firebase
   </button>
-  <button class="nav-item" data-action="open" data-url="https://supabase.com/dashboard/glnpdfbnyijdzvulzbfv">
-    <svg viewBox="0 0 24 24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-    Supabase
+  <button class="nav-item" data-action="open" data-url="https://analytics.google.com/analytics/web/#/p473794342/reports/intelligenthome">
+    <svg viewBox="0 0 24 24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
+    GA4
   </button>
   <button class="nav-item" data-action="refresh">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -460,7 +460,7 @@
           <span class="stat-trend" id="bookmarksTrend">--</span>
         </div>
         <div class="stat-value" id="bookmarksCount">--</div>
-        <div class="stat-label">Bladwijzers</div>
+        <div class="stat-label">Actieve prijzen</div>
       </div>
       <div class="stat-card">
         <div class="stat-header">
@@ -478,7 +478,7 @@
       <div class="section">
         <div class="section-header">
           <h2 class="section-title">Website verkeer</h2>
-          <a href="https://tweakly.netlify.app" target="_blank" class="section-link">Website →</a>
+          <a href="https://analytics.google.com/analytics/web/" target="_blank" class="section-link">Open GA4 →</a>
         </div>
         <div class="chart-card">
           <div class="chart-wrap">
@@ -489,8 +489,8 @@
 
       <div class="section">
         <div class="section-header">
-          <h2 class="section-title">App gebruikers</h2>
-          <a href="https://app.tweakly.nl" target="_blank" class="section-link">App →</a>
+          <h2 class="section-title">Database statistieken</h2>
+          <a href="https://supabase.com/dashboard/project/glnpdfbnyijdzvulzbfv" target="_blank" class="section-link">Supabase →</a>
         </div>
         <div class="chart-card">
           <div class="chart-wrap">
@@ -633,7 +633,7 @@
 
   <footer style="margin-top: 3rem; padding-top: 1.5rem; border-top: 0.5px solid rgba(255,255,255,0.06); text-align: center;">
     <p style="font-size: 0.75rem; color: var(--text-3);">
-      Laatst bijgewerkt: <span id="lastUpdated">--</span> · Data via Supabase API
+      Laatst bijgewerkt: <span id="lastUpdated">--</span> · Data via Supabase · Website analytics via GA4
     </p>
   </footer>
 </main>
@@ -643,20 +643,31 @@
 <script type="module">
   import Chart from 'chart.js/auto';
 
-  // Supabase config (not used - data is mocked)
-  // To connect to real data, replace mock data in loadData, loadAlerts, loadProducts, loadUsers
+  // ─── Supabase config ──────────────────────────────────────────────────
+  const SUPABASE_URL = 'https://glnpdfbnyijdzvulzbfv.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsbnBkZmJueWlqZHp2dWx6YmZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyOTU4MzUsImV4cCI6MjA4Nzg3MTgzNX0.az-ko5O8XY0wrKwqqssE_Xwowy1o0aof5Rsj5H-ThDM';
+
+  async function sb(table, params = '') {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'count=exact'
+        }
       });
-      if (!res.ok) {
-        const err = await res.json();
-        console.warn(`Supabase ${table}:`, err);
-        return [];
-      }
-      return await res.json();
+      if (!res.ok) { console.warn(`Supabase ${table}:`, await res.text()); return { data: [], count: 0 }; }
+      const count = parseInt(res.headers.get('content-range')?.split('/')[1] ?? '0', 10);
+      const data = await res.json();
+      return { data, count };
     } catch (e) {
       console.error(`Error fetching ${table}:`, e);
-      return [];
+      return { data: [], count: 0 };
     }
   }
+
+  // ─── State ─────────────────────────────────────────────────────────────
+  let siteChart, appChart, currentPeriod = '30d';
 
   // ─── Format helpers ────────────────────────────────────────────────────
   function formatNumber(num) {
@@ -666,14 +677,14 @@
     return num.toString();
   }
 
+  function formatPrice(p) {
+    if (!p) return '-';
+    return '€' + parseFloat(p).toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
   function formatDate(date) {
     if (!date) return '-';
-    return new Date(date).toLocaleDateString('nl-NL', { 
-      day: 'numeric', 
-      month: 'short',
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
+    return new Date(date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   }
 
   function formatDateShort(date) {
@@ -681,36 +692,13 @@
     return new Date(date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
   }
 
-  function calcTrend(current, previous) {
-    const el = document.createElement('span');
-    if (!previous || previous === 0) {
-      el.className = 'stat-trend';
-      el.textContent = '--';
-      return el;
-    }
-    const diff = ((current - previous) / previous) * 100;
-    el.className = `stat-trend ${diff >= 0 ? 'up' : 'down'}`;
-    el.textContent = `${diff >= 0 ? '+' : ''}${diff.toFixed(0)}%`;
-    return el;
-  }
-
   function getCategoryIcon(cat) {
-    const icons = {
-      'Smartphones': '📱',
-      'Audio': '🎧',
-      'Laptops': '💻',
-      'TV\'s': '📺',
-      'Tablets': '📱',
-      'Cameras': '📷',
-      'Gaming': '🎮',
-      'Wearables': '⌚',
-      'Audio/Video': '🎬',
-      'Default': '📦'
-    };
+    const icons = { 'Smartphones': '📱', 'Audio': '🎧', 'Laptops': '💻', "TV's": '📺', 'Tablets': '📱',
+      'Cameras': '📷', 'Gameconsoles': '🎮', 'Gaming': '🎮', 'Wearables': '⌚', 'Desktops': '🖥️',
+      'Opslag (SSD)': '💾', 'Voedingen': '🔌', 'Default': '📦' };
     return icons[cat] || icons['Default'];
   }
 
-  // ─── Show toast ───────────────────────────────────────────────────────
   function showToast(msg, type = 'success') {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -718,183 +706,188 @@
     setTimeout(() => t.classList.remove('show'), 3000);
   }
 
-  // ─── Load all data ────────────────────────────────────────────────────
-  // NOTE: This dashboard shows mock data. To get real GA4 data, you would need
-  // a Google Analytics Data API key and service account. For now, showing placeholder.
+  // ─── Load dashboard data from Supabase ────────────────────────────────
   async function loadData() {
     const btn = document.getElementById('refreshBtn');
     btn.classList.add('spin');
-    
-    // Show loading state
+
     document.getElementById('siteVisitors').innerHTML = '<span class="loading-spinner"></span>';
     document.getElementById('appUsers').innerHTML = '<span class="loading-spinner"></span>';
     document.getElementById('bookmarksCount').innerHTML = '<span class="loading-spinner"></span>';
     document.getElementById('alertsCount').innerHTML = '<span class="loading-spinner"></span>';
 
-    // Wait a moment to show loading
-    await new Promise(r => setTimeout(r, 500));
+    const [profilesRes, alertsRes, productsRes, shopsRes, categoriesRes, pricesRes, topProductsRes] = await Promise.all([
+      sb('profiles', 'select=id&limit=1'),
+      sb('price_alerts', 'select=id&limit=1'),
+      sb('products_v2', 'select=id&limit=1'),
+      sb('shops', 'select=id&limit=1'),
+      sb('categories', 'select=id&limit=1'),
+      sb('shop_prices', 'select=id&limit=1'),
+      sb('shop_prices', 'select=product_id,price,products_v2(name,categories(name))&order=price.asc&limit=10'),
+    ]);
 
-    // For now, use realistic placeholder numbers that you can update manually
-    // In production, this would connect to Google Analytics Data API
-    const mockData = {
-      siteVisitors: 24350,
-      appUsers: 3200,
-      bookmarks: 1847,
-      alerts: 456,
-      products: 1250,
-      shops: 12,
-      categories: 8,
-      articles: 156,
-      reviews: 89
-    };
+    const appUsers = profilesRes.count;
+    const alerts = alertsRes.count;
+    const products = productsRes.count;
+    const shops = shopsRes.count;
+    const categories = categoriesRes.count;
+    const prices = pricesRes.count;
 
-    // Update stats
-    document.getElementById('siteVisitors').textContent = formatNumber(mockData.siteVisitors);
-    document.getElementById('siteTrend').innerHTML = '';
-    document.getElementById('siteTrend').appendChild(calcTrend(mockData.siteVisitors, Math.floor(mockData.siteVisitors * 0.92)));
+    // Website visitors: GA4 is server-side only — show link instead of fake number
+    document.getElementById('siteVisitors').innerHTML = `<a href="https://analytics.google.com/analytics/web/" target="_blank" style="color:var(--blue);font-size:0.9rem;text-decoration:none;">Open GA4 →</a>`;
+    document.getElementById('siteTrend').textContent = '';
 
-    document.getElementById('appUsers').textContent = formatNumber(mockData.appUsers);
-    document.getElementById('appTrend').innerHTML = '';
-    document.getElementById('appTrend').appendChild(calcTrend(mockData.appUsers, Math.floor(mockData.appUsers * 0.88)));
+    document.getElementById('appUsers').textContent = formatNumber(appUsers);
+    document.getElementById('appTrend').textContent = '';
 
-    document.getElementById('bookmarksCount').textContent = formatNumber(mockData.bookmarks);
-    document.getElementById('bookmarksTrend').innerHTML = '';
-    document.getElementById('bookmarksTrend').appendChild(calcTrend(mockData.bookmarks, Math.floor(mockData.bookmarks * 0.95)));
+    document.getElementById('bookmarksCount').textContent = formatNumber(prices);
+    document.getElementById('bookmarksTrend').textContent = '';
 
-    document.getElementById('alertsCount').textContent = formatNumber(mockData.alerts);
-    document.getElementById('alertsTrend').innerHTML = '';
-    document.getElementById('alertsTrend').appendChild(calcTrend(mockData.alerts, Math.floor(mockData.alerts * 1.05)));
+    document.getElementById('alertsCount').textContent = formatNumber(alerts);
+    document.getElementById('alertsTrend').textContent = '';
 
     // Product stats
-    document.getElementById('totalProducts').textContent = formatNumber(mockData.products);
-    document.getElementById('totalShops').textContent = formatNumber(mockData.shops);
-    document.getElementById('totalPrices').textContent = formatNumber(mockData.products * 2);
-    document.getElementById('totalCategories').textContent = formatNumber(mockData.categories);
-    document.getElementById('totalArticles').textContent = formatNumber(mockData.articles);
-    document.getElementById('totalReviews').textContent = formatNumber(mockData.reviews);
+    document.getElementById('totalProducts').textContent = formatNumber(products);
+    document.getElementById('totalShops').textContent = formatNumber(shops);
+    document.getElementById('totalPrices').textContent = formatNumber(prices);
+    document.getElementById('totalCategories').textContent = formatNumber(categories);
+    document.getElementById('totalArticles').textContent = '—';
+    document.getElementById('totalReviews').textContent = '—';
 
-    // Update charts
+    // Top products table
+    const topEl = document.getElementById('topProducts');
+    if (topProductsRes.data.length > 0) {
+      topEl.innerHTML = topProductsRes.data.map(sp => {
+        const name = sp.products_v2?.name || `Product #${sp.product_id}`;
+        const cat = sp.products_v2?.categories?.name || 'Algemeen';
+        return `
+          <div class="table-row">
+            <div class="table-item">
+              <div class="table-icon">${getCategoryIcon(cat)}</div>
+              <div class="table-info">
+                <span class="table-name">${name}</span>
+                <span class="table-sub">${cat}</span>
+              </div>
+            </div>
+            <span class="table-value">${formatPrice(sp.price)}</span>
+          </div>`;
+      }).join('');
+    } else {
+      topEl.innerHTML = '<div class="table-row"><span class="table-sub" style="padding:0.5rem;">Geen data</span></div>';
+    }
+
+    // Recent alerts (price_alerts table)
+    const recentEl = document.getElementById('recentAlerts');
+    if (alerts === 0) {
+      recentEl.innerHTML = '<div class="table-row"><span class="table-sub" style="padding:0.5rem;">Geen actieve prijsalerts</span></div>';
+    }
+
     updateCharts();
-
-    // Last updated
     document.getElementById('lastUpdated').textContent = new Date().toLocaleString('nl-NL');
-
-    showToast('Dashboard geladen - data is placeholder');
-
+    showToast('Data geladen via Supabase');
     btn.classList.remove('spin');
   }
 
   // ─── Load alerts view ─────────────────────────────────────────────────
   async function loadAlerts() {
-    // Mock alerts data - replace with real data source
-    const mockAlerts = [
-      { id: 1, product_id: 101, target_price: 279, created_at: '2026-04-02T10:30:00Z' },
-      { id: 2, product_id: 102, target_price: 899, created_at: '2026-04-01T15:45:00Z' },
-      { id: 3, product_id: 103, target_price: 149, created_at: '2026-04-01T09:20:00Z' },
-      { id: 4, product_id: 104, target_price: 599, created_at: '2026-03-31T18:00:00Z' },
-      { id: 5, product_id: 105, target_price: 249, created_at: '2026-03-30T12:15:00Z' },
-    ];
-    const mockProducts = [
-      { id: 101, name: 'Sony WH-1000XM5', category: 'Audio', brand: 'Sony' },
-      { id: 102, name: 'iPhone 15 Pro', category: 'Smartphones', brand: 'Apple' },
-      { id: 103, name: 'Samsung Galaxy S24', category: 'Smartphones', brand: 'Samsung' },
-      { id: 104, name: 'MacBook Air M3', category: 'Laptops', brand: 'Apple' },
-      { id: 105, name: 'AirPods Pro 2', category: 'Audio', brand: 'Apple' },
-    ];
-
     const allAlertsEl = document.getElementById('allAlerts');
-    allAlertsEl.innerHTML = mockAlerts.map(a => {
-      const prod = mockProducts.find(p => p.id === a.product_id);
+    allAlertsEl.innerHTML = '<div class="table-row"><span class="loading-spinner"></span></div>';
+
+    const { data } = await sb('price_alerts', 'select=*,products_v2(name,categories(name))&order=created_at.desc&limit=50');
+
+    if (data.length === 0) {
+      allAlertsEl.innerHTML = '<div class="table-row"><span class="table-sub" style="padding:1rem;">Geen prijsalerts gevonden</span></div>';
+      return;
+    }
+    allAlertsEl.innerHTML = data.map(a => {
+      const name = a.products_v2?.name || `Product #${a.product_id}`;
+      const cat = a.products_v2?.categories?.name || 'Algemeen';
       return `
         <div class="table-row">
           <div style="display:grid;grid-template-columns:1fr 150px 120px;width:100%;align-items:center;">
             <div class="table-item">
-              <div class="table-icon">${getCategoryIcon(prod?.category)}</div>
+              <div class="table-icon">${getCategoryIcon(cat)}</div>
               <div class="table-info">
-                <span class="table-name">${prod?.name || 'Product #' + a.product_id}</span>
-                <span class="table-sub">${prod?.brand || prod?.category || 'Algemeen'}</span>
+                <span class="table-name">${name}</span>
+                <span class="table-sub">${cat}</span>
               </div>
             </div>
-            <span class="table-value" style="color:var(--orange);">€${a.target_price}</span>
+            <span class="table-value" style="color:var(--orange);">${formatPrice(a.target_price)}</span>
             <span class="table-sub">${formatDate(a.created_at)}</span>
           </div>
-        </div>
-      `;
+        </div>`;
     }).join('');
   }
 
   // ─── Load products view ───────────────────────────────────────────────
   async function loadProducts() {
-    // Mock products data - replace with real data source
-    const mockProducts = [
-      { id: 1, name: 'Sony WH-1000XM5', category: 'Audio', brand: 'Sony', min_price: 279, max_price: 349, updated_at: '2026-04-02T10:00:00Z' },
-      { id: 2, name: 'iPhone 15 Pro 256GB', category: 'Smartphones', brand: 'Apple', min_price: 1199, max_price: 1299, updated_at: '2026-04-01T15:00:00Z' },
-      { id: 3, name: 'Samsung Galaxy S24 Ultra', category: 'Smartphones', brand: 'Samsung', min_price: 1299, max_price: 1499, updated_at: '2026-04-01T12:00:00Z' },
-      { id: 4, name: 'MacBook Air 15" M3', category: 'Laptops', brand: 'Apple', min_price: 1299, max_price: 1499, updated_at: '2026-03-31T09:00:00Z' },
-      { id: 5, name: 'AirPods Pro 2', category: 'Audio', brand: 'Apple', min_price: 229, max_price: 279, updated_at: '2026-03-30T18:00:00Z' },
-      { id: 6, name: 'LG OLED C3 55"', category: "TV's", brand: 'LG', min_price: 1099, max_price: 1499, updated_at: '2026-03-29T14:00:00Z' },
-      { id: 7, name: 'Dyson V15 Detect', category: 'Huishouden', brand: 'Dyson', min_price: 599, max_price: 749, updated_at: '2026-03-28T11:00:00Z' },
-      { id: 8, name: 'PlayStation 5', category: 'Gaming', brand: 'Sony', min_price: 499, max_price: 599, updated_at: '2026-03-27T16:00:00Z' },
-    ];
-
     const allProductsEl = document.getElementById('allProducts');
-    allProductsEl.innerHTML = mockProducts.map(p => {
-      const savings = p.max_price && p.min_price ? Math.round(((p.max_price - p.min_price) / p.max_price) * 100) : 0;
+    allProductsEl.innerHTML = '<div class="table-row"><span class="loading-spinner"></span></div>';
+
+    const { data } = await sb('shop_prices', 'select=product_id,price,updated_at,shops(name),products_v2(name,categories(name))&order=updated_at.desc&limit=100');
+
+    if (data.length === 0) {
+      allProductsEl.innerHTML = '<div class="table-row"><span class="table-sub" style="padding:1rem;">Geen producten gevonden</span></div>';
+      return;
+    }
+
+    // Group by product
+    const byProduct = {};
+    data.forEach(sp => {
+      const key = sp.product_id;
+      if (!byProduct[key]) byProduct[key] = { ...sp, prices: [] };
+      byProduct[key].prices.push(parseFloat(sp.price));
+      if (new Date(sp.updated_at) > new Date(byProduct[key].updated_at)) byProduct[key].updated_at = sp.updated_at;
+    });
+
+    allProductsEl.innerHTML = Object.values(byProduct).map(p => {
+      const name = p.products_v2?.name || `Product #${p.product_id}`;
+      const cat = p.products_v2?.categories?.name || 'Algemeen';
+      const min = Math.min(...p.prices);
+      const max = Math.max(...p.prices);
       return `
         <div class="table-row">
-          <div style="display:grid;grid-template-columns:1fr 100px 100px 100px;width:100%;align-items:center;gap:1rem;">
+          <div style="display:grid;grid-template-columns:1fr 120px 100px 100px;width:100%;align-items:center;gap:1rem;">
             <div class="table-item">
-              <div class="table-icon">${getCategoryIcon(p.category)}</div>
+              <div class="table-icon">${getCategoryIcon(cat)}</div>
               <div class="table-info">
-                <span class="table-name">${p.name}</span>
-                <span class="table-sub">${p.brand} · ${p.category}</span>
+                <span class="table-name">${name}</span>
+                <span class="table-sub">${cat}</span>
               </div>
             </div>
-            <span class="table-value" style="color:var(--green);">€${p.min_price}</span>
-            <span style="font-size:0.85rem;color:var(--text-2);">€${p.max_price}</span>
+            <span class="table-value" style="color:var(--green);">${formatPrice(min)}</span>
+            <span style="font-size:0.85rem;color:var(--text-2);">${formatPrice(max)}</span>
             <span class="table-sub">${formatDateShort(p.updated_at)}</span>
           </div>
-        </div>
-      `;
+        </div>`;
     }).join('');
   }
 
   // ─── Load users view ──────────────────────────────────────────────────
   async function loadUsers() {
-    // Mock users data - replace with real data source
-    const mockUsers = [
-      { id: 1, display_name: 'Sander V.', email: 'sander@example.com', created_at: '2026-04-02T08:30:00Z', pushEnabled: true },
-      { id: 2, display_name: 'Laura D.', email: 'laura@example.com', created_at: '2026-04-01T14:20:00Z', pushEnabled: true },
-      { id: 3, display_name: 'Thomas K.', email: 'thomas@example.com', created_at: '2026-03-31T09:15:00Z', pushEnabled: false },
-      { id: 4, display_name: 'Emma W.', email: 'emma@example.com', created_at: '2026-03-30T16:45:00Z', pushEnabled: true },
-      { id: 5, display_name: 'Mark R.', email: 'mark@example.com', created_at: '2026-03-29T11:00:00Z', pushEnabled: true },
-    ];
-
     const allUsersEl = document.getElementById('allUsers');
-    allUsersEl.innerHTML = mockUsers.map(p => `
+    allUsersEl.innerHTML = '<div class="table-row"><span class="loading-spinner"></span></div>';
+
+    const { data } = await sb('profiles', 'select=id,display_name,push_enabled,updated_at&order=updated_at.desc.nullslast&limit=50');
+
+    if (data.length === 0) {
+      allUsersEl.innerHTML = '<div class="table-row"><span class="table-sub" style="padding:1rem;">Geen gebruikers gevonden</span></div>';
+      return;
+    }
+    allUsersEl.innerHTML = data.map(p => `
       <div class="table-row">
         <div style="display:grid;grid-template-columns:1fr 150px 100px;width:100%;align-items:center;">
           <div class="table-item">
             <div class="table-icon">👤</div>
             <div class="table-info">
-              <span class="table-name">${p.display_name}</span>
-              <span class="table-sub">${p.email}</span>
+              <span class="table-name">${p.display_name || 'Gebruiker'}</span>
+              <span class="table-sub">ID: ${p.id.slice(0, 8)}…</span>
             </div>
           </div>
-          <span class="table-sub">${formatDate(p.created_at)}</span>
-          <span class="badge ${p.pushEnabled ? 'success' : 'warning'}">${p.pushEnabled ? 'Actief' : 'Inactief'}</span>
+          <span class="table-sub">${formatDate(p.updated_at)}</span>
+          <span class="badge ${p.push_enabled ? 'success' : 'warning'}">${p.push_enabled ? 'Push aan' : 'Push uit'}</span>
         </div>
-      </div>
-    `).join('');
-  }
-            <span class="table-sub">${formatDate(p.created_at)}</span>
-            <span class="badge ${p.pushEnabled !== false ? 'success' : 'warning'}">${p.pushEnabled !== false ? 'Actief' : 'Inactief'}</span>
-          </div>
-        </div>
-      `).join('');
-    } else {
-      allUsersEl.innerHTML = '<div class="table-row"><span class="table-sub" style="padding:1rem;">Geen gebruikers gevonden</span></div>';
-    }
+      </div>`).join('');
   }
 
   // ─── Charts ────────────────────────────────────────────────────────────
@@ -910,71 +903,30 @@
     };
 
     siteChart = new Chart(document.getElementById('siteChart'), {
-      type: 'line',
-      data: {
-        labels: getLabels(),
-        datasets: [{
-          data: getSiteData(),
-          borderColor: '#0A84FF',
-          backgroundColor: 'rgba(10,132,255,0.1)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#0A84FF'
-        }]
-      },
-      options: chartDefaults
+      type: 'bar',
+      data: { labels: ['Jan', 'Feb', 'Mrt', 'Apr'], datasets: [{ data: [0, 0, 0, 0], backgroundColor: 'rgba(10,132,255,0.3)', borderColor: '#0A84FF', borderWidth: 1 }] },
+      options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, title: { display: true, text: 'Open GA4 voor website statistieken', color: 'rgba(245,245,247,0.4)', font: { size: 12 } } } }
     });
 
     appChart = new Chart(document.getElementById('appChart'), {
-      type: 'line',
+      type: 'bar',
       data: {
-        labels: getLabels(),
-        datasets: [{
-          data: getAppData(),
-          borderColor: '#30D158',
-          backgroundColor: 'rgba(48,209,88,0.1)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#30D158'
-        }]
+        labels: ['Producten', 'Shops', 'Prijzen', 'Categorieën', 'Gebruikers', 'Alerts'],
+        datasets: [{ data: [0, 0, 0, 0, 0, 0], backgroundColor: ['rgba(48,209,88,0.4)', 'rgba(10,132,255,0.4)', 'rgba(88,86,214,0.4)', 'rgba(255,149,0,0.4)', 'rgba(48,209,88,0.4)', 'rgba(255,69,58,0.4)'], borderWidth: 0, borderRadius: 4 }]
       },
       options: chartDefaults
     });
   }
 
-  function getLabels() {
-    if (currentPeriod === 'today') return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'];
-    if (currentPeriod === '7d') return ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
-    if (currentPeriod === '30d') return ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-    return ['Maand 1', 'Maand 2', 'Maand 3'];
-  }
-
-  function getSiteData() {
-    // Simulated based on user activity
-    if (currentPeriod === 'today') return [120, 85, 320, 890, 720, 410];
-    if (currentPeriod === '7d') return [2100, 2400, 1900, 3200, 2800, 3100, 2650];
-    if (currentPeriod === '30d') return [5200, 6800, 7400, 6100];
-    return [15000, 18200, 21500];
-  }
-
-  function getAppData() {
-    if (currentPeriod === 'today') return [45, 32, 180, 420, 380, 210];
-    if (currentPeriod === '7d') return [1200, 1450, 1100, 1800, 1600, 1750, 1400];
-    if (currentPeriod === '30d') return [4200, 5100, 4800, 5600];
-    return [12000, 14500, 16800];
-  }
-
   function updateCharts() {
-    if (siteChart) {
-      siteChart.data.labels = getLabels();
-      siteChart.data.datasets[0].data = getSiteData();
-      siteChart.update();
-    }
     if (appChart) {
-      appChart.data.labels = getLabels();
-      appChart.data.datasets[0].data = getAppData();
+      const products = parseInt(document.getElementById('totalProducts').textContent.replace(/[^\d]/g, '')) || 0;
+      const shops = parseInt(document.getElementById('totalShops').textContent.replace(/[^\d]/g, '')) || 0;
+      const prices = parseInt(document.getElementById('bookmarksCount').textContent.replace(/[^\d]/g, '')) || 0;
+      const cats = parseInt(document.getElementById('totalCategories').textContent.replace(/[^\d]/g, '')) || 0;
+      const users = parseInt(document.getElementById('appUsers').textContent.replace(/[^\d]/g, '')) || 0;
+      const alerts = parseInt(document.getElementById('alertsCount').textContent.replace(/[^\d]/g, '')) || 0;
+      appChart.data.datasets[0].data = [products, shops, prices, cats, users, alerts];
       appChart.update();
     }
   }
@@ -986,14 +938,8 @@
       const action = item.dataset.action;
       const url = item.dataset.url;
 
-      if (action === 'open' && url) {
-        window.open(url, '_blank');
-        return;
-      }
-      if (action === 'refresh') {
-        loadData();
-        return;
-      }
+      if (action === 'open' && url) { window.open(url, '_blank'); return; }
+      if (action === 'refresh') { loadData(); return; }
 
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
       item.classList.add('active');
@@ -1006,24 +952,20 @@
       const titles = { dashboard: 'Dashboard', meldingen: 'Prijsalerts', prijzen: 'Producten', gebruikers: 'Gebruikers' };
       document.getElementById('pageTitle').textContent = titles[view] || 'Dashboard';
 
-      // Load view-specific data
       if (view === 'meldingen') loadAlerts();
       if (view === 'prijzen') loadProducts();
       if (view === 'gebruikers') loadUsers();
     });
   });
 
-  // ─── Period buttons ──────────────────────────────────────────────────
   document.querySelectorAll('.period-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentPeriod = btn.dataset.period;
-      loadData();
     });
   });
 
-  // ─── Refresh buttons for views ───────────────────────────────────────
   document.getElementById('refreshAlertsBtn')?.addEventListener('click', loadAlerts);
   document.getElementById('refreshProductsBtn')?.addEventListener('click', loadProducts);
   document.getElementById('refreshUsersBtn')?.addEventListener('click', loadUsers);
@@ -1031,15 +973,8 @@
 
   // ─── Init ───────────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
-    console.log('Dashboard initializing...');
-    try {
-      initCharts();
-      console.log('Charts initialized');
-      loadData();
-      console.log('Data loaded');
-    } catch (e) {
-      console.error('Init error:', e);
-    }
+    initCharts();
+    loadData();
   });
 </script>
 
