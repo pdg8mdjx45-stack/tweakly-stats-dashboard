@@ -643,9 +643,10 @@
 <script type="module">
   import Chart from 'chart.js/auto';
 
-  // ─── Supabase config ──────────────────────────────────────────────────
+  // ─── Config ───────────────────────────────────────────────────────────
   const SUPABASE_URL = 'https://glnpdfbnyijdzvulzbfv.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsbnBkZmJueWlqZHp2dWx6YmZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyOTU4MzUsImV4cCI6MjA4Nzg3MTgzNX0.az-ko5O8XY0wrKwqqssE_Xwowy1o0aof5Rsj5H-ThDM';
+  const ANALYTICS_WORKER = 'https://tweakly-analytics.alexander-ballet8111.workers.dev';
 
   async function sb(table, params = '') {
     try {
@@ -716,7 +717,7 @@
     document.getElementById('bookmarksCount').innerHTML = '<span class="loading-spinner"></span>';
     document.getElementById('alertsCount').innerHTML = '<span class="loading-spinner"></span>';
 
-    const [profilesRes, alertsRes, productsRes, shopsRes, categoriesRes, pricesRes, topProductsRes] = await Promise.all([
+    const [profilesRes, alertsRes, productsRes, shopsRes, categoriesRes, pricesRes, topProductsRes, analyticsRes] = await Promise.all([
       sb('profiles', 'select=id&limit=1'),
       sb('price_alerts', 'select=id&limit=1'),
       sb('products_v2', 'select=id&limit=1'),
@@ -724,6 +725,7 @@
       sb('categories', 'select=id&limit=1'),
       sb('shop_prices', 'select=id&limit=1'),
       sb('shop_prices', 'select=product_id,price,products_v2(name,categories(name))&order=price.asc&limit=10'),
+      fetch(`${ANALYTICS_WORKER}?period=${currentPeriod}`).then(r => r.json()).catch(() => null),
     ]);
 
     const appUsers = profilesRes.count;
@@ -733,9 +735,21 @@
     const categories = categoriesRes.count;
     const prices = pricesRes.count;
 
-    // Website visitors: GA4 is server-side only — show link instead of fake number
-    document.getElementById('siteVisitors').innerHTML = `<a href="https://analytics.google.com/analytics/web/" target="_blank" style="color:var(--blue);font-size:0.9rem;text-decoration:none;">Open GA4 →</a>`;
-    document.getElementById('siteTrend').textContent = '';
+    // Website visitors from Cloudflare Web Analytics Worker
+    if (analyticsRes && analyticsRes.visits !== undefined) {
+      document.getElementById('siteVisitors').textContent = formatNumber(analyticsRes.visits);
+      const trendEl = document.getElementById('siteTrend');
+      if (analyticsRes.trend !== null) {
+        trendEl.className = `stat-trend ${analyticsRes.trend >= 0 ? 'up' : 'down'}`;
+        trendEl.textContent = `${analyticsRes.trend >= 0 ? '+' : ''}${analyticsRes.trend}%`;
+      } else {
+        trendEl.className = 'stat-trend';
+        trendEl.textContent = 'nieuw';
+      }
+    } else {
+      document.getElementById('siteVisitors').innerHTML = `<a href="https://dash.cloudflare.com/ca3ab6a60381024e591a2190c2468495/web-analytics" target="_blank" style="color:var(--blue);font-size:0.9rem;text-decoration:none;">Open CF →</a>`;
+      document.getElementById('siteTrend').textContent = '';
+    }
 
     document.getElementById('appUsers').textContent = formatNumber(appUsers);
     document.getElementById('appTrend').textContent = '';
