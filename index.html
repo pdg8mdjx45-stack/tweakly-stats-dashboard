@@ -747,8 +747,9 @@
         trendEl.textContent = 'nieuw';
       }
     } else {
-      document.getElementById('siteVisitors').innerHTML = `<a href="https://dash.cloudflare.com/ca3ab6a60381024e591a2190c2468495/web-analytics" target="_blank" style="color:var(--blue);font-size:0.9rem;text-decoration:none;">Open CF →</a>`;
-      document.getElementById('siteTrend').textContent = '';
+      document.getElementById('siteVisitors').textContent = '0';
+      document.getElementById('siteTrend').className = 'stat-trend';
+      document.getElementById('siteTrend').textContent = 'nieuw';
     }
 
     document.getElementById('appUsers').textContent = formatNumber(appUsers);
